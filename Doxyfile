@@ -1,0 +1,23 @@
+# Minimal Doxygen settings for the Pumpkin asset engine documentation style.
+# Usage: doxygen Doxyfile
+
+PROJECT_NAME           = "Pumpkin AE"
+INPUT                  = ./Library
+RECURSIVE              = YES
+FILE_PATTERNS          = *.cpp *.inl *.hpp
+OPTIMIZE_OUTPUT_FOR_C  = NO
+CPP_CLI_SUPPORT        = NO
+OUTPUT_DIRECTORY       = Docs
+
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = "PUMPKIN_API=" "PUMPKIN_AE_BUILD"
+
+# Custom tags used in the comments
+ALIASES += "thread_safety=\par Thread safety:^^"
+ALIASES += "complexity=\par Complexity:^^"
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = YES
+GENERATE_LATEX         = NO

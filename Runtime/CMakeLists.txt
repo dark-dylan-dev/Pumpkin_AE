@@ -1,4 +1,4 @@
-add_executable(Runtime main.cpp)
+add_executable(Runtime main.cpp Item.cpp)
 
 # Binary properties
 set_target_properties(Runtime PROPERTIES
