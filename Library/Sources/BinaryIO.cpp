@@ -5,7 +5,10 @@
 namespace Pumpkin::AE {
 
     void BinaryWriter::put(std::uint64_t v, int n) {
-        for (int i = 0; i < n; ++i) m_buf.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
+        if constexpr(std::endian::native == std::endian::little)
+            for (int i = 0; i < n; ++i) m_buf.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
+        else
+            for (int i = n - 1; i > 0; --i) m_buf.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
     }
     void BinaryWriter::u8(std::uint8_t v)   { put(v, 1); }
     void BinaryWriter::u16(std::uint16_t v) { put(v, 2); }
@@ -26,7 +29,10 @@ namespace Pumpkin::AE {
     std::uint64_t BinaryReader::get(int n) {
         if (!m_ok || m_bytes.size() - m_pos < static_cast<std::size_t>(n)) { m_ok = false; return 0; }
         std::uint64_t v = 0;
-        for (int i = 0; i < n; ++i) v |= static_cast<std::uint64_t>(m_bytes[m_pos++]) << (8 * i);
+        if constexpr(std::endian::native == std::endian::little)
+            for (int i = 0; i < n; ++i) v |= static_cast<std::uint64_t>(m_bytes[m_pos++]) << (8 * i);
+        else
+            for (int i = n - 1; i > 0; --i) v |= static_cast<std::uint64_t>(m_bytes[m_pos++]) << (8 * i);
         return v;
     }
 

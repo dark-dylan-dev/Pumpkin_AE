@@ -10,6 +10,7 @@ set_target_properties(Pumpkin_AE PROPERTIES
 
 # DLL Properties
 target_compile_definitions(Pumpkin_AE PRIVATE PUMPKIN_AE_BUILD)
+target_compile_definitions(Pumpkin_AE PRIVATE PUMPKIN_AE_VERSION=${AE_VERSION})
 set_target_properties(Pumpkin_AE PROPERTIES
         CXX_VISIBILITY_PRESET hidden
         VISIBILITY_INLINES_HIDDEN ON

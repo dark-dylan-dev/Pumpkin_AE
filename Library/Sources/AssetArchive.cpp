@@ -1,11 +1,13 @@
 #include <AE/AssetArchive.hpp>
 
 #include <algorithm>
+#include <bit>
 
 namespace Pumpkin::AE {
 
-    constexpr std::uint32_t kMagic      = 0x54455341; // "ASET" in little-endian
-    constexpr std::uint16_t kVersion    = 1; // TODO: Version with the CMake project, for backwards compatibility
+    /// @brief "ASET"
+    constexpr std::uint32_t kMagic      = std::endian::native == std::endian::little ? 0x54455341 : 0x41534554;
+    constexpr std::uint16_t kVersion    = PUMPKIN_AE_VERSION;
     constexpr std::size_t   kHeaderSize = 20;
     constexpr std::size_t   kEntrySize  = 32;
 
@@ -23,13 +25,19 @@ namespace Pumpkin::AE {
 
     // Appends the n low bytes of v, least significant first (little-endian, host independent).
     static inline void Put(std::vector<std::uint8_t>& o, std::uint64_t v, int n) {
-        for (int i = 0; i < n; ++i) o.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
+        if constexpr(std::endian::native == std::endian::little)
+            for (int i = 0; i < n; ++i) o.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
+        else
+            for (int i = n - 1; i > 0; --i) o.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
     }
 
     // Reads n bytes at p as a little-endian integer and advances p. No bounds check: validate the size first.
     static inline std::uint64_t Get(std::span<const std::uint8_t> b, std::size_t& p, int n) {
         std::uint64_t v = 0;
-        for (int i = 0; i < n; ++i) v |= static_cast<std::uint64_t>(b[p++]) << (8 * i);
+        if constexpr(std::endian::native == std::endian::little)
+            for (int i = 0; i < n; ++i) v |= static_cast<std::uint64_t>(b[p++]) << (8 * i);
+        else
+            for (int i = n - 1; i > 0; --i) v |= static_cast<std::uint64_t>(b[p++]) << (8 * i);
         return v;
     }
 
