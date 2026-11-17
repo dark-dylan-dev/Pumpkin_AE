@@ -91,7 +91,7 @@ namespace Pumpkin::AE {
         void bytes(const void* p, std::size_t n);
 
         /// @brief Writes a string length or sequence count as a u32.
-        void len(std::size_t n) {
+        void len(const std::size_t n) {
             assert(n <= std::numeric_limits<std::uint32_t>::max());
             raw(static_cast<std::uint32_t>(n));
         }
@@ -110,7 +110,7 @@ namespace Pumpkin::AE {
         template<typename T>
         void write(const T& v) {
             if constexpr (Primitive<T>)         raw(v);
-            else if constexpr (StringLike<T>) { std::string_view s = v; len(s.size()); bytes(s.data(), s.size()); }
+            else if constexpr (StringLike<T>) { const std::string_view s = v; len(s.size()); bytes(s.data(), s.size()); }
             else if constexpr (Reflectable<T>)  std::apply([&](const auto&... f) { (write(f), ...); }, v.Reflect());
             else if constexpr (TupleLike<T>)    std::apply([&](const auto&... f) { (write(f), ...); }, v);
             else if constexpr (std::ranges::range<T>) {
@@ -189,7 +189,7 @@ namespace Pumpkin::AE {
             else if constexpr (Reflectable<T>)                 std::apply([&](auto&... f) { (read(f), ...); }, v.Reflect());
             else if constexpr (TupleLike<T>)                   std::apply([&](auto&... f) { (read(f), ...); }, v);
             else if constexpr (std::ranges::range<T>) {
-                using E = typename T::value_type;
+                using E = T::value_type;
                 const std::uint32_t n = count(std::max<std::size_t>(1, MinEncodedSize<E>()));
                 v.clear();
                 if constexpr (requires { v.reserve(n); }) v.reserve(n);

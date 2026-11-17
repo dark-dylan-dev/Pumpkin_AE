@@ -13,9 +13,9 @@ namespace Pumpkin::AE {
 
     // CRC-32 (IEEE), bitwise implementation.
     // See: https://en.wikipedia.org/wiki/Computation_of_cyclic_redundancy_checks#CRC-32_example
-    static inline std::uint32_t CRC32(std::span<const std::uint8_t> d) {
+    static std::uint32_t CRC32(const std::span<const std::uint8_t> d) {
         std::uint32_t c = 0xFFFFFFFF;
-        for (std::uint8_t b : d) {
+        for (const std::uint8_t b : d) {
             c ^= b;
             for (int i = 0; i < 8; ++i)
                 c = (c >> 1) ^ (0xEDB88320 & (0u - (c & 1))); // xor the polynomial if the low bit was 1
@@ -24,19 +24,19 @@ namespace Pumpkin::AE {
     }
 
     // Appends the n low bytes of v, least significant first (little-endian, host independent).
-    static inline void Put(std::vector<std::uint8_t>& o, std::uint64_t v, int n) {
+    static void Put(std::vector<std::uint8_t>& o, const std::uint64_t v, const int n) {
         for (int i = 0; i < n; ++i) o.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
     }
 
     // Reads n bytes at p as a little-endian integer and advances p. No bounds check: validate the size first.
-    static inline std::uint64_t Get(std::span<const std::uint8_t> b, std::size_t& p, int n) {
+    static inline std::uint64_t Get(const std::span<const std::uint8_t> b, std::size_t& p, const int n) {
         std::uint64_t v = 0;
         for (int i = 0; i < n; ++i) v |= static_cast<std::uint64_t>(b[p++]) << (8 * i);
         return v;
     }
 
 
-    bool Writer::Add(std::uint64_t id, std::uint32_t type, std::span<const std::uint8_t> bytes) {
+    bool Writer::Add(std::uint64_t id, const std::uint32_t type, std::span<const std::uint8_t> bytes) {
         if (std::ranges::any_of(m_entries, [&](auto& e) { return e.id == id; }))
             return false; // duplicate ID
 
@@ -126,7 +126,7 @@ namespace Pumpkin::AE {
         return m_entries;
     }
 
-    std::optional<std::vector<std::uint8_t>> Reader::Load(std::uint64_t id) {
+    std::optional<std::vector<std::uint8_t>> Reader::Load(const std::uint64_t id) {
         error.clear();
         const auto it = std::ranges::find(m_entries, id, &Entry::id);
         if (it == m_entries.end()) { error = "unknown ID"; return std::nullopt; }

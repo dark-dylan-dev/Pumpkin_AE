@@ -19,13 +19,13 @@ namespace Pumpkin::AE {
 
     template <class T>
         requires (!std::convertible_to<const T&, std::span<const std::uint8_t>>)
-    bool Writer::Add(std::uint64_t id, std::uint32_t type, const T& v) {
+    bool Writer::Add(const std::uint64_t id, const std::uint32_t type, const T& v) {
         return Add(id, type, std::span<const std::uint8_t>(Encode(v)));
     }
 
     template <class T>
     std::optional<T> Reader::Load(std::uint64_t id) {
-        auto bytes = Load(id);
+        const auto bytes = Load(id);
         if (!bytes) return std::nullopt;
 
         auto value = Decode<T>(*bytes);
