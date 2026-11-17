@@ -17,4 +17,20 @@ namespace Pumpkin::AE {
         return v;
     }
 
+    template <class T>
+        requires (!std::convertible_to<const T&, std::span<const std::uint8_t>>)
+    bool Writer::Add(std::uint64_t id, std::uint32_t type, const T& v) {
+        return Add(id, type, std::span<const std::uint8_t>(Encode(v)));
+    }
+
+    template <class T>
+    std::optional<T> Reader::Load(std::uint64_t id) {
+        auto bytes = Load(id);
+        if (!bytes) return std::nullopt;
+
+        auto value = Decode<T>(*bytes);
+        if (!value) error = "payload does not match the layout of the requested type";
+        return value;
+    }
+
 } // namespace Pumpkin::AE

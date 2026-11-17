@@ -1,5 +1,6 @@
 #pragma once
 
+#include <concepts>
 #include <cstdint>
 #include <fstream>
 #include <optional>
@@ -66,6 +67,21 @@ namespace Pumpkin::AE {
         /// @return false if an asset with the same ID was already added.
         bool Add(std::uint64_t id, std::uint32_t type, std::span<const std::uint8_t> bytes);
 
+        /// @brief Encodes a value and queues it as an asset in one step.
+        ///
+        /// Combines Encode<T>() and Add(id, type, bytes). Anything convertible to
+        /// a byte span (vector<uint8_t>, array, span...) is excluded, so raw
+        /// buffers always go through the overload above and are stored verbatim.
+        /// Needs <AE/Codec.hpp>, which defines it.
+        /// @tparam T Domain type, which needs a Codec<T> (generated if it has Reflect()).
+        /// @param id   Unique asset ID.
+        /// @param type Asset type, stored as is.
+        /// @param v    Value to encode.
+        /// @return false if an asset with the same ID was already added.
+        template <class T>
+            requires (!std::convertible_to<const T&, std::span<const std::uint8_t>>)
+        bool Add(std::uint64_t id, std::uint32_t type, const T& v);
+
         /// @brief Builds the whole archive in memory and writes it to disk in one go.
         /// @param path Destination file. Truncated if it already exists.
         /// @return false if the file could not be opened or written.
@@ -97,6 +113,17 @@ namespace Pumpkin::AE {
         /// @param id Asset ID.
         /// @return The payload, or std::nullopt with error set (unknown ID, read failure or CRC mismatch).
         std::optional<std::vector<std::uint8_t>> Load(std::uint64_t id);
+
+        /// @brief Loads one asset and decodes it into a T in one step.
+        ///
+        /// Combines Load(id) and Decode<T>(). Every failure (unknown ID, read
+        /// failure, CRC mismatch, payload that doesn't match T's layout) returns
+        /// std::nullopt with error set. Needs <AE/Codec.hpp>, which defines it.
+        /// @tparam T Domain type, which needs a Codec<T> (generated if it has Reflect()).
+        /// @param id Asset ID.
+        /// @return The decoded value, or std::nullopt with error set.
+        template <class T>
+        std::optional<T> Load(std::uint64_t id);
     private:
         /// @brief Records an error and empties the directory so no partial state remains.
         /// @param m Error message.

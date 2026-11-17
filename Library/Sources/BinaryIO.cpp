@@ -3,20 +3,9 @@
 #include <bit>
 
 namespace Pumpkin::AE {
-
-    void BinaryWriter::put(std::uint64_t v, int n) {
-        for (int i = 0; i < n; ++i) m_buf.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
-    }
-    void BinaryWriter::u8(std::uint8_t v)   { put(v, 1); }
-    void BinaryWriter::u16(std::uint16_t v) { put(v, 2); }
-    void BinaryWriter::u32(std::uint32_t v) { put(v, 4); }
-    void BinaryWriter::u64(std::uint64_t v) { put(v, 8); }
-    void BinaryWriter::boolean(bool v)      { u8(v ? 1 : 0); }
-    void BinaryWriter::f32(float v)         { u32(std::bit_cast<std::uint32_t>(v)); }
-    void BinaryWriter::f64(double v)        { u64(std::bit_cast<std::uint64_t>(v)); }
-    void BinaryWriter::str(const std::string& s) {
-        u32(static_cast<std::uint32_t>(s.size()));
-        m_buf.insert(m_buf.end(), s.begin(), s.end());
+    void BinaryWriter::bytes(const void* p, std::size_t n) {
+        auto b = static_cast<const std::uint8_t*>(p);
+        m_buf.insert(m_buf.end(), b, b + n);
     }
     std::vector<std::uint8_t> BinaryWriter::take() { return std::move(m_buf); }
 
