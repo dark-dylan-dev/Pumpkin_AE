@@ -2,3 +2,6 @@ Build/
 .idea/
 .vs/
 Docs/
+out/
+vc140.pdb
+CMakeSettings.json
