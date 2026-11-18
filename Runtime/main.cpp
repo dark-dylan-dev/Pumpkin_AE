@@ -9,7 +9,8 @@ int main() {
     // Write
     Writer w;
     for (uint64_t i = 0; i < 10; ++i) {
-        Item sword{ .id = i, .name = "Iron sword", .tags = {"weapon"}, .weight = 100.0f / (i + 1) };
+        Position pos{ .x = static_cast<int>(i), .y = static_cast<int>(i * 2) };
+        Item sword{ .id = i, .name = "Iron sword", .tags = {"weapon"}, .weight = 100.0f / (i + 1), .position = &pos };
         w.Add(sword.id, kItemType, sword);
     }
     if (!w.Save("items.assets")) return 1;
@@ -20,5 +21,5 @@ int main() {
 
     for (auto& e : r.List())
         if (auto item = r.Load<Item>(e.id))
-            std::println("{}: {} ({} kg) {}", item->id, item->name, item->weight, item->tags);
+            std::println("{}: {} ({} kg) {} {}", item->id, item->name, item->weight, item->tags, item->position ? "at (" + std::to_string(item->position->x) + ", " + std::to_string(item->position->y) + ")" : "");
 }
