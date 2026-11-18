@@ -79,7 +79,8 @@ namespace Pumpkin::AE {
         /// @param id   Unique asset ID.
         /// @param type Asset type, stored as is.
         /// @param v    Value to encode.
-        /// @return false if an asset with the same ID was already added.
+        /// @return false if an asset with the same ID was already added, or if the value
+        ///         could not be encoded (see BinaryWriter::ok()).
         template <class T>
             requires (!std::convertible_to<const T&, std::span<const std::uint8_t>>)
         bool Add(std::uint64_t id, std::uint32_t type, const T& v);

@@ -47,9 +47,9 @@ namespace Pumpkin::AE {
     /// @brief Encodes a value into a payload, ready for Writer::Add().
     /// @tparam T Domain type, which needs a Codec<T> (generated if it has Reflect()).
     /// @param v Value to encode.
-    /// @return The encoded bytes.
+    /// @return The encoded bytes, or std::nullopt if the value could not be encoded (see BinaryWriter::ok()).
     template <class T>
-    std::vector<std::uint8_t> Encode(const T& v);
+    std::optional<std::vector<std::uint8_t>> Encode(const T& v);
 
     /// @brief Decodes a payload into a value.
     /// @tparam T Domain type, which needs a Codec<T> (generated if it has Reflect()).
