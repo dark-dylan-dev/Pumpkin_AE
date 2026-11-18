@@ -37,7 +37,7 @@ namespace Pumpkin::AE {
 
 
     bool Writer::Add(std::uint64_t id, const std::uint32_t type, std::span<const std::uint8_t> bytes) {
-        if (std::ranges::any_of(m_entries, [&](auto& e) { return e.id == id; }))
+        if (!m_ids.insert(id).second)
             return false; // duplicate ID
 
         // Offsets are absolute: the data section starts right after the header
@@ -77,7 +77,9 @@ namespace Pumpkin::AE {
         // Open at the end (ate) so tellg() gives the file size
         m_file.open(path, std::ios::binary | std::ios::ate);
         if (!m_file) return Fail("cannot open file");
-        const std::uint64_t fileSize = static_cast<std::uint64_t>(m_file.tellg());
+        const std::streampos end = m_file.tellg();
+        if (end == std::streampos(-1)) return Fail("cannot get file size");
+        const auto fileSize = static_cast<std::uint64_t>(static_cast<std::streamoff>(end));
         if (fileSize < kHeaderSize) return Fail("truncated header");
 
         // Header
@@ -114,10 +116,14 @@ namespace Pumpkin::AE {
             // Written as "size > dirOff - offset" so that offset + size can't overflow
             if (e.offset < kHeaderSize || e.offset > dirOff || e.size > dirOff - e.offset)
                 return Fail("entry out of bounds");
-            if (std::ranges::any_of(tmp, [&](auto& o) { return o.id == e.id; }))
-                return Fail("duplicate ID");
             tmp.push_back(e);
         }
+
+        // Duplicate check in O(n log n).
+        std::vector<std::uint64_t> ids; ids.reserve(tmp.size());
+        for (const Entry& e : tmp) ids.push_back(e.id);
+        std::ranges::sort(ids);
+        if (std::ranges::adjacent_find(ids) != ids.end()) return Fail("duplicate ID");
         m_entries = std::move(tmp);
         return true;
     }

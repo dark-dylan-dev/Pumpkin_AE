@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <ranges>
 #include <span>
 #include <string>
@@ -30,6 +31,8 @@
 /// - Sequences (vector, list, deque...): u32 element count followed by the elements.
 /// - pair / tuple: the elements back to back, no prefix.
 /// - Reflectable types: the fields returned by Reflect(), in order, back to back.
+/// - Pointers (raw, unique_ptr, shared_ptr): u8 presence flag (0 = null, 1 = present),
+///   followed by the pointee encoded inline when present.
 ///
 /// @par Reflect()
 /// A type becomes serializable by providing a Reflect() member returning a
@@ -39,6 +42,15 @@
 /// auto Reflect(this auto&& self) { return std::tie(self.a, self.b); }
 /// @endcode
 /// The order of the fields in Reflect() is the on-disk schema.
+///
+/// @par Pointers
+/// A pointer field stores a copy of the object it points to, never an address.
+/// - Supported: T*, std::unique_ptr<T> and std::shared_ptr<T>, where T is
+///   serializable and default constructible. A pointer designates exactly one
+///   object: arrays, void*, function pointers and string pointers (const char*,
+///   which stay strings) are not pointers in this sense.
+/// - Identity is not preserved. Two pointers to the same object are stored twice
+///   and load as two distinct objects, so shared_ptr sharing is lost.
 
 namespace Pumpkin::AE {
 
@@ -60,6 +72,24 @@ namespace Pumpkin::AE {
 
     template<typename T> inline constexpr bool always_false = false;
 
+    /// @brief True for std::unique_ptr<T, D> where T is not an array type.
+    template<typename T> struct IsUniquePtr : std::false_type {};
+    template<typename T, typename D> requires (!std::is_array_v<T>)
+    struct IsUniquePtr<std::unique_ptr<T, D>> : std::true_type {};
+
+    /// @brief True for std::shared_ptr<T> where T is not an array type.
+    template<typename T> struct IsSharedPtr : std::false_type {};
+    template<typename T> requires (!std::is_array_v<T>)
+    struct IsSharedPtr<std::shared_ptr<T>> : std::true_type {};
+
+    /// @brief Raw or smart pointer to exactly one object, encoded as a presence flag plus the pointee.
+    ///
+    /// void*, function pointers and arrays are excluded.
+    template<typename T>
+    concept Indirect =
+        (std::is_pointer_v<T> && std::is_object_v<std::remove_pointer_t<T>> && !StringLike<T>)
+        || IsUniquePtr<T>::value || IsSharedPtr<T>::value;
+
     template<typename T> consteval std::size_t MinEncodedSize();
 
     /// @brief Sum of the minimum encoded sizes of every element of a tuple type.
@@ -78,6 +108,7 @@ namespace Pumpkin::AE {
     consteval std::size_t MinEncodedSize() {
         if constexpr (Primitive<T>)               return sizeof(T);
         else if constexpr (StringLike<T>)         return 4; // u32 length
+        else if constexpr (Indirect<T>)           return 1; // presence flag
         else if constexpr (Reflectable<T>)        return TupleMinSize<decltype(std::declval<T&>().Reflect())>();
         else if constexpr (TupleLike<T>)          return TupleMinSize<T>();
         else if constexpr (std::ranges::range<T>) return 4; // u32 count
@@ -99,6 +130,11 @@ namespace Pumpkin::AE {
         template<typename T>
         void raw(T v) {
             if constexpr (std::is_enum_v<T>) return raw(static_cast<std::underlying_type_t<T>>(v));
+            else if constexpr (std::is_floating_point_v<T>) { // IEEE-754 bits as an integer, so the byte swap below also covers floats
+                static_assert(sizeof(T) == 4 || sizeof(T) == 8, "unsupported floating-point type");
+                if constexpr (sizeof(T) == 4) raw(std::bit_cast<std::uint32_t>(v));
+                else                          raw(std::bit_cast<std::uint64_t>(v));
+            }
             else {
                 if constexpr (std::endian::native == std::endian::big && std::is_integral_v<T>)
                     v = std::byteswap(v); // file format = little endian
@@ -111,6 +147,11 @@ namespace Pumpkin::AE {
         void write(const T& v) {
             if constexpr (Primitive<T>)         raw(v);
             else if constexpr (StringLike<T>) { const std::string_view s = v; len(s.size()); bytes(s.data(), s.size()); }
+            else if constexpr (Indirect<T>) {
+                const bool present = static_cast<bool>(v);
+                write(present);                 // Primitive: 1 byte
+                if (present) write(*v);         // pointee goes through its own encoding
+            }
             else if constexpr (Reflectable<T>)  std::apply([&](const auto&... f) { (write(f), ...); }, v.Reflect());
             else if constexpr (TupleLike<T>)    std::apply([&](const auto&... f) { (write(f), ...); }, v);
             else if constexpr (std::ranges::range<T>) {
@@ -135,12 +176,27 @@ namespace Pumpkin::AE {
         std::span<const std::uint8_t> m_bytes; ///< Bytes being read.
         std::size_t m_pos = 0;             ///< Current read position.
         bool m_ok = true;                  ///< false after the first failed read.
+        std::uint32_t m_depth = 0;         ///< Pointer nesting of the read in progress, bounded by kMaxDepth.
 
         /// @brief Reads n bytes as a little-endian integer, or fails if fewer remain.
         std::uint64_t get(int n);
+
+        /// @brief Frees a pointee that read() allocated before a failure, then nulls the pointer.
+        template<typename P>
+        static void drop(P& p) {
+            if constexpr (std::is_pointer_v<P>) { delete p; p = nullptr; }
+            else p.reset();
+        }
     public:
         /// @param b Bytes to read from.
         explicit BinaryReader(std::span<const std::uint8_t> b);
+
+        /// @brief Maximum pointer nesting accepted by read().
+        ///
+        /// Every pointer level costs a few stack frames but only one byte of
+        /// input, so a hostile or corrupted payload could otherwise overflow the
+        /// stack. Reaching the limit makes the read fail.
+        static constexpr std::uint32_t kMaxDepth = 256;
 
         /// @brief Returns true while every read so far has succeeded.
         [[nodiscard]] bool ok() const;
@@ -186,6 +242,31 @@ namespace Pumpkin::AE {
             }
             else if constexpr (std::is_integral_v<T>)          v = static_cast<T>(get(static_cast<int>(sizeof(T))));
             else if constexpr (std::is_same_v<T, std::string>) v = str();
+            else if constexpr (Indirect<T>) {
+                using P = std::remove_reference_t<decltype(*v)>;
+                static_assert(!std::is_const_v<P>, "BinaryReader::read(): cannot read through a pointer to const");
+                static_assert(std::is_default_constructible_v<P>, "BinaryReader::read(): the pointee must be default constructible");
+
+                const bool present = boolean();
+                if (!m_ok || !present) {        // null pointer, or the read already failed
+                    if constexpr (std::is_pointer_v<T>) v = nullptr; else v.reset();
+                    return;
+                }
+                if (m_depth >= kMaxDepth) {     // hostile or cyclic data: stop before the stack runs out
+                    m_ok = false;
+                    if constexpr (std::is_pointer_v<T>) v = nullptr; else v.reset();
+                    return;
+                }
+
+                if constexpr (std::is_pointer_v<T>)       v = new P{};
+                else if constexpr (IsSharedPtr<T>::value) v = std::make_shared<P>();
+                else                                      v.reset(new P{});
+
+                ++m_depth;
+                read(*v);
+                --m_depth;
+                if (!m_ok) drop(v);
+            }
             else if constexpr (Reflectable<T>)                 std::apply([&](auto&... f) { (read(f), ...); }, v.Reflect());
             else if constexpr (TupleLike<T>)                   std::apply([&](auto&... f) { (read(f), ...); }, v);
             else if constexpr (std::ranges::range<T>) {

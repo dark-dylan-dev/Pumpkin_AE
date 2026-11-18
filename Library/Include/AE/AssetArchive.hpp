@@ -6,6 +6,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include <Platform/Export.hpp>
@@ -59,6 +60,7 @@ namespace Pumpkin::AE {
     class PUMPKIN_API Writer {
         std::vector<std::uint8_t> m_data;    ///< Raw data section: every payload, back to back.
         std::vector<Entry>        m_entries; ///< Directory, in insertion order.
+        std::unordered_set<std::uint64_t> m_ids; ///< IDs already added, for O(1) duplicate detection.
     public:
         /// @brief Queues an asset. Nothing is written to disk until Save().
         /// @param id    Unique asset ID.

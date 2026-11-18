@@ -10,7 +10,7 @@ int main() {
     Writer w;
     for (uint64_t i = 0; i < 10; ++i) {
         Position pos{ .x = static_cast<int>(i), .y = static_cast<int>(i * 2) };
-        Item sword{ .id = i, .name = "Iron sword", .tags = {"weapon"}, .weight = 100.0f / (i + 1), .position = &pos };
+        Item sword{ .id = i, .name = "Iron sword", .tags = {"weapon"}, .weight = 100.0f / (i + 1), .position = std::make_unique<Position>(pos) };
         w.Add(sword.id, kItemType, sword);
     }
     if (!w.Save("items.assets")) return 1;

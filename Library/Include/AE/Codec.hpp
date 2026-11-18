@@ -36,7 +36,7 @@ namespace Pumpkin::AE {
         static void Write(BinaryWriter& w, const T& v) { w.write(v); }
 
         static bool Read(BinaryReader& r, T& v) {
-            T tmp;
+            T tmp{};
             r.read(tmp);
             if (!r.ok()) return false;
             v = std::move(tmp); // commit only on success
