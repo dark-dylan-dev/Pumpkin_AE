@@ -27,5 +27,5 @@ target_link_libraries(UnitTests PRIVATE Pumpkin_AE)
 target_link_libraries(UnitTests PRIVATE GTest::gtest_main)
 target_include_directories(UnitTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-file(GLOB_RECURSE TEST_SOURCES "*.cpp")
+file(GLOB_RECURSE TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 target_sources(UnitTests PRIVATE ${TEST_SOURCES})

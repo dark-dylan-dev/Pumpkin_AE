@@ -33,3 +33,16 @@ struct Inventory {
     Item* equipped = nullptr;
     auto Reflect(this auto&& self) { return std::tie(self.items, self.equipped); }
 };
+
+// Leaky types to test circular references
+struct Leaky2;
+
+struct Leaky1 {
+    std::shared_ptr<Leaky2> leaky;
+	auto Reflect(this auto&& self) { return std::tie(self.leaky); }
+};
+
+struct Leaky2 {
+	std::shared_ptr<Leaky1> leaky;
+	auto Reflect(this auto&& self) { return std::tie(self.leaky); }
+};
