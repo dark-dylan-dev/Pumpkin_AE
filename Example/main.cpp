@@ -12,7 +12,7 @@ int main() {
     const auto steel = std::make_shared<Material>(Material{ .name = "Steel", .roughness = 0.3f });
 
     Inventory inventory;
-    for (uint64_t i = 0; i < 10; ++i) {
+    for (std::uint64_t i = 0; i < 10; ++i) {
         inventory.items.push_back(std::make_unique<Item>(Item{
             .id       = i,
             .name     = "Sword",
