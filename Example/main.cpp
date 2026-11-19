@@ -4,8 +4,8 @@
 
 int main() {
     using namespace Pumpkin::AE;
-    constexpr uint32_t kInventoryType = 1;
-    constexpr uint32_t kInventoryID = 1337;
+    constexpr std::uint32_t kInventoryType = 1;
+    constexpr std::uint32_t kInventoryID = 1337;
 
     // Build the data: two materials shared by ten items, and one equipped item
     const auto iron  = std::make_shared<Material>(Material{ .name = "Iron",  .roughness = 0.7f });
