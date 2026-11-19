@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <ranges>
@@ -14,6 +15,7 @@
 #include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -31,8 +33,8 @@
 /// - Sequences (vector, list, deque...): u32 element count followed by the elements.
 /// - pair / tuple: the elements back to back, no prefix.
 /// - Reflectable types: the fields returned by Reflect(), in order, back to back.
-/// - Pointers (raw, unique_ptr, shared_ptr): u8 presence flag (0 = null, 1 = present),
-///   followed by the pointee encoded inline when present.
+/// - Pointers (raw, unique_ptr, shared_ptr): u8 tag, 0 = null, 1 = new object (the object
+///   follows inline), 2 = reference (the u32 number of an earlier object follows).
 ///
 /// @par Reflect()
 /// A type becomes serializable by providing a Reflect() member returning a
@@ -44,13 +46,10 @@
 /// The order of the fields in Reflect() is the on-disk schema.
 ///
 /// @par Pointers
-/// A pointer field stores a copy of the object it points to, never an address.
-/// - Supported: T*, std::unique_ptr<T> and std::shared_ptr<T>, where T is
-///   serializable and default constructible. A pointer designates exactly one
-///   object: arrays, void*, function pointers and string pointers (const char*,
-///   which stay strings) are not pointers in this sense.
-/// - Identity is not preserved. Two pointers to the same object are stored twice
-///   and load as two distinct objects, so shared_ptr sharing is lost.
+/// A pointer field stores the object it points to. Objects are tracked by
+/// identity, so sharing, aliasing and cycles survive a round trip.
+/// - Nesting deeper than kMaxPointerDepth fails, on write and on read, so a
+///   chain of objects cannot overflow the stack.
 
 namespace Pumpkin::AE {
 
@@ -90,6 +89,30 @@ namespace Pumpkin::AE {
         (std::is_pointer_v<T> && std::is_object_v<std::remove_pointer_t<T>> && !StringLike<T>)
         || IsUniquePtr<T>::value || IsSharedPtr<T>::value;
 
+    /// @brief Deepest chain of nested pointers accepted by BinaryWriter and BinaryReader.
+    inline constexpr std::uint32_t kMaxPointerDepth = 256;
+
+    /// @brief Kind of pointer through which an object was first met (Root: the value being encoded).
+    enum class PtrKind : std::uint8_t { Raw, Unique, Shared, Root };
+
+    /// @brief Pointer tags, as encoded on disk.
+    inline constexpr std::uint8_t kPtrNull = 0; ///< No object.
+    inline constexpr std::uint8_t kPtrNew  = 1; ///< First time this object is met: it follows inline.
+    inline constexpr std::uint8_t kPtrRef  = 2; ///< Object already written: its u32 number follows.
+
+    /// @brief One address per type.
+    template<typename T> inline char kTypeTag = 0;
+    template<typename T> const void* TypeId() { return &kTypeTag<T>; }
+
+    /// @brief Identity of a pointed-to object: its address and its type.
+    using ObjectKey = std::pair<const void*, const void*>;
+
+    struct ObjectKeyHash {
+        std::size_t operator()(const ObjectKey& k) const noexcept {
+            return std::hash<const void*>{}(k.first) * 31 + std::hash<const void*>{}(k.second);
+        }
+    };
+
     template<typename T> consteval std::size_t MinEncodedSize();
 
     /// @brief Sum of the minimum encoded sizes of every element of a tuple type.
@@ -108,7 +131,7 @@ namespace Pumpkin::AE {
     consteval std::size_t MinEncodedSize() {
         if constexpr (Primitive<T>)               return sizeof(T);
         else if constexpr (StringLike<T>)         return 4; // u32 length
-        else if constexpr (Indirect<T>)           return 1; // presence flag
+        else if constexpr (Indirect<T>)           return 1; // pointer tag (null)
         else if constexpr (Reflectable<T>)        return TupleMinSize<decltype(std::declval<T&>().Reflect())>();
         else if constexpr (TupleLike<T>)          return TupleMinSize<T>();
         else if constexpr (std::ranges::range<T>) return 4; // u32 count
@@ -118,12 +141,18 @@ namespace Pumpkin::AE {
     /// @brief Appends encoded values to an in-memory buffer.
     class PUMPKIN_API BinaryWriter {
         std::vector<std::uint8_t> m_buf; ///< Encoded bytes.
+        bool m_ok = true;                ///< false after the first value that cannot be encoded.
+        bool m_first = true;             ///< true until the first write(), whose value is the root.
+        std::uint32_t m_depth = 0;       ///< Pointer nesting of the write in progress.
+        std::uint32_t m_nextId = 0;      ///< Number given to the next new pointee.
+        /// Pointees met so far: their number and the kind of pointer that met them first.
+        std::unordered_map<ObjectKey, std::pair<std::uint32_t, PtrKind>, ObjectKeyHash> m_seen;
 
         void bytes(const void* p, std::size_t n);
 
         /// @brief Writes a string length or sequence count as a u32.
         void len(const std::size_t n) {
-            assert(n <= std::numeric_limits<std::uint32_t>::max());
+            if (n > std::numeric_limits<std::uint32_t>::max()) { m_ok = false; return; }
             raw(static_cast<std::uint32_t>(n));
         }
 
@@ -145,12 +174,39 @@ namespace Pumpkin::AE {
         /// @brief Encodes any supported value. Nested types recurse through their own Reflect().
         template<typename T>
         void write(const T& v) {
+            const bool first = std::exchange(m_first, false);
+            if (!m_ok) return;
+            if constexpr (std::is_class_v<T> && !Indirect<T>) {
+                if (first) m_seen.emplace(ObjectKey{ std::addressof(v), TypeId<T>() }, std::pair{ 0u, PtrKind::Root });
+            }
+
             if constexpr (Primitive<T>)         raw(v);
             else if constexpr (StringLike<T>) { const std::string_view s = v; len(s.size()); bytes(s.data(), s.size()); }
             else if constexpr (Indirect<T>) {
-                const bool present = static_cast<bool>(v);
-                write(present);                 // Primitive: 1 byte
-                if (present) write(*v);         // pointee goes through its own encoding
+                using P = std::remove_cv_t<std::remove_reference_t<decltype(*v)>>;
+                constexpr PtrKind kind = IsUniquePtr<T>::value ? PtrKind::Unique
+                                       : IsSharedPtr<T>::value ? PtrKind::Shared : PtrKind::Raw;
+
+                if (!v) { raw(kPtrNull); return; }
+                const ObjectKey key{ std::addressof(*v), TypeId<P>() };
+
+                if (const auto it = m_seen.find(key); it != m_seen.end()) { // already written: back-reference
+                    const PtrKind owner = it->second.second;
+                    const bool allowed = kind == PtrKind::Raw    ? owner != PtrKind::Root
+                                       : kind == PtrKind::Shared ? owner == PtrKind::Shared
+                                       : false;                  // a unique_ptr is never the second pointer to an object
+                    if (!allowed) { m_ok = false; return; }
+                    raw(kPtrRef);
+                    raw(it->second.first);
+                    return;
+                }
+
+                if (m_depth >= kMaxPointerDepth) { m_ok = false; return; }
+                m_seen.emplace(key, std::pair{ m_nextId++, kind }); // registered BEFORE the pointee, so a cycle finds it
+                raw(kPtrNew);
+                ++m_depth;
+                write(*v);
+                --m_depth;
             }
             else if constexpr (Reflectable<T>)  std::apply([&](const auto&... f) { (write(f), ...); }, v.Reflect());
             else if constexpr (TupleLike<T>)    std::apply([&](const auto&... f) { (write(f), ...); }, v);
@@ -160,6 +216,9 @@ namespace Pumpkin::AE {
             }
             else static_assert(always_false<T>, "BinaryWriter::write(): type is not serializable (add Reflect())");
         }
+
+        /// @brief Returns false if a written value could not be encoded
+        [[nodiscard]] bool ok() const { return m_ok; }
 
         /// @brief Moves the encoded bytes out of the writer.
         /// @note The writer is left in a moved-from state and should not be reused.
@@ -176,10 +235,19 @@ namespace Pumpkin::AE {
         std::span<const std::uint8_t> m_bytes; ///< Bytes being read.
         std::size_t m_pos = 0;             ///< Current read position.
         bool m_ok = true;                  ///< false after the first failed read.
-        std::uint32_t m_depth = 0;         ///< Pointer nesting of the read in progress, bounded by kMaxDepth.
+        std::uint32_t m_depth = 0;         ///< Pointer nesting of the read in progress, bounded by kMaxPointerDepth.
 
         /// @brief Reads n bytes as a little-endian integer, or fails if fewer remain.
         std::uint64_t get(int n);
+
+        /// @brief An object created by read() for a pointer tagged "new".
+        struct Obj {
+            const void*           type; ///< TypeId<P>() of the pointee.
+            void*                 ptr;  ///< The object.
+            std::shared_ptr<void> keep; ///< Shared ownership, set only for objects created through a shared_ptr.
+            PtrKind               kind; ///< Kind of the pointer that created it.
+        };
+        std::vector<Obj> m_objs;        ///< Objects created so far, indexed by their number.
 
         /// @brief Frees a pointee that read() allocated before a failure, then nulls the pointer.
         template<typename P>
@@ -190,13 +258,6 @@ namespace Pumpkin::AE {
     public:
         /// @param b Bytes to read from.
         explicit BinaryReader(std::span<const std::uint8_t> b);
-
-        /// @brief Maximum pointer nesting accepted by read().
-        ///
-        /// Every pointer level costs a few stack frames but only one byte of
-        /// input, so a hostile or corrupted payload could otherwise overflow the
-        /// stack. Reaching the limit makes the read fail.
-        static constexpr std::uint32_t kMaxDepth = 256;
 
         /// @brief Returns true while every read so far has succeeded.
         [[nodiscard]] bool ok() const;
@@ -246,13 +307,33 @@ namespace Pumpkin::AE {
                 using P = std::remove_reference_t<decltype(*v)>;
                 static_assert(!std::is_const_v<P>, "BinaryReader::read(): cannot read through a pointer to const");
                 static_assert(std::is_default_constructible_v<P>, "BinaryReader::read(): the pointee must be default constructible");
+                constexpr PtrKind kind = IsUniquePtr<T>::value ? PtrKind::Unique
+                                       : IsSharedPtr<T>::value ? PtrKind::Shared : PtrKind::Raw;
 
-                const bool present = boolean();
-                if (!m_ok || !present) {        // null pointer, or the read already failed
+                const std::uint8_t tag = u8();
+                if (!m_ok || tag == kPtrNull) {     // null pointer, or the read already failed
                     if constexpr (std::is_pointer_v<T>) v = nullptr; else v.reset();
                     return;
                 }
-                if (m_depth >= kMaxDepth) {     // hostile or cyclic data: stop before the stack runs out
+
+                // object created earlier
+                if (tag == kPtrRef) {
+                    const std::uint32_t id = u32();
+                    const Obj* o = (m_ok && id < m_objs.size()) ? &m_objs[id] : nullptr;
+                    // A unique_ptr can't refer to an existing object, and a shared_ptr can only
+                    // share one that was created through a shared_ptr.
+                    if (!o || o->type != TypeId<P>() || kind == PtrKind::Unique
+                           || (kind == PtrKind::Shared && o->kind != PtrKind::Shared)) {
+                        m_ok = false;
+                        if constexpr (std::is_pointer_v<T>) v = nullptr; else v.reset();
+                        return;
+                    }
+                    if constexpr (kind == PtrKind::Raw)         v = static_cast<P*>(o->ptr);
+                    else if constexpr (kind == PtrKind::Shared) v = std::static_pointer_cast<P>(o->keep);
+                    return;
+                }
+
+                if (tag != kPtrNew || m_depth >= kMaxPointerDepth) {
                     m_ok = false;
                     if constexpr (std::is_pointer_v<T>) v = nullptr; else v.reset();
                     return;
@@ -261,6 +342,10 @@ namespace Pumpkin::AE {
                 if constexpr (std::is_pointer_v<T>)       v = new P{};
                 else if constexpr (IsSharedPtr<T>::value) v = std::make_shared<P>();
                 else                                      v.reset(new P{});
+
+                Obj obj{ TypeId<P>(), std::addressof(*v), nullptr, kind };
+                if constexpr (kind == PtrKind::Shared) obj.keep = v;
+                m_objs.push_back(std::move(obj));
 
                 ++m_depth;
                 read(*v);
