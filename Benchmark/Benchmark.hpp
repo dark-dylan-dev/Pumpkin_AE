@@ -1,127 +1,9 @@
 
 #pragma once
 
-#include <print>
-#include <iostream>
-#include <vector>
-#include <memory>
-#include <string>
-#include <tuple>
-#include <cstdint>
-#include <utility>
-#include <chrono>
-#include <numeric>
-
-#include <AE/Codec.hpp>
+#include "Utilities.hpp"
 
 using namespace Pumpkin::AE;
-
-constexpr uint32_t kInventoryType = 1;
-constexpr uint32_t kFirstInventoryID = 1337;
-constexpr const char* kInventoryFile = "inventory.assets";
-
-struct Material {
-    std::string name;
-    float roughness = 0.5f;
-
-    auto Reflect(this auto&& self) {
-        return std::tie(self.name, self.roughness);
-    }
-};
-
-struct Item {
-    uint64_t id = 0;
-    std::string name;
-    std::vector<std::string> tags;
-    float weight = 1.0f;
-    std::shared_ptr<Material> material;
-
-    auto Reflect(this auto&& self) {
-        return std::tie(
-            self.id,
-            self.name,
-            self.tags,
-            self.weight,
-            self.material
-        );
-    }
-};
-
-struct Inventory {
-    std::vector<std::unique_ptr<Item>> items;
-    Item* equipped = nullptr;
-
-    auto Reflect(this auto&& self) {
-        return std::tie(self.items, self.equipped);
-    }
-};
-
-struct BenchmarkResults {
-    std::vector<double> creatingInventories;
-    std::vector<double> writingInventories;
-    std::vector<double> savingInventories;
-    std::vector<double> openingInventories;
-    std::vector<double> loadingInventories;
-};
-
-template<typename Func>
-double MeasureTime(Func&& function) {
-    using namespace std::chrono;
-
-    const auto start = steady_clock::now();
-
-    function();
-
-    const auto end = steady_clock::now();
-
-    return duration<double, std::milli>(end - start).count();
-}
-
-struct BenchmarkStats {
-    double average = 0.0;
-    double median = 0.0;
-    double minimum = 0.0;
-    double maximum = 0.0;
-};
-
-BenchmarkStats CalculateStats(std::vector<double> times)
-{
-    if (times.empty())
-        return {};
-
-    BenchmarkStats stats{};
-
-    stats.average =
-        std::accumulate(times.begin(), times.end(), 0.0) / times.size();
-
-    std::sort(times.begin(), times.end());
-
-    const size_t size = times.size();
-
-    if (size % 2 == 0)
-        stats.median = (times[size / 2 - 1] + times[size / 2]) / 2.0;
-    else
-        stats.median = times[size / 2];
-
-    stats.minimum = times.front();
-    stats.maximum = times.back();
-
-    return stats;
-}
-
-void PrintStats(const char* name, const std::vector<double>& times)
-{
-    const auto stats = CalculateStats(times);
-
-    std::println(
-        "{:<15} | {:>9.3f} | {:>9.3f} | {:>9.3f} | {:>9.3f} ms",
-        name,
-        stats.average,
-        stats.median,
-        stats.minimum,
-        stats.maximum
-    );
-}
 
 std::vector<Inventory> CreateInventories(
     int nbInventories,
@@ -242,8 +124,6 @@ bool LoadInventories(
 
     return true;
 }
-
-
 
 bool RunBenchmark(int nbInventories, int nbItemsPerInventory)
 {
