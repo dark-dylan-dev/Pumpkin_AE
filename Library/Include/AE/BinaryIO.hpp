@@ -311,7 +311,8 @@ namespace Pumpkin::AE {
                                        : IsSharedPtr<T>::value ? PtrKind::Shared : PtrKind::Raw;
 
                 const std::uint8_t tag = u8();
-                if (!m_ok || tag == kPtrNull) {     // null pointer, or the read already failed
+                if (!m_ok || tag == kPtrNull) {
+                    // null pointer, or the read already failed
                     if constexpr (std::is_pointer_v<T>) v = nullptr; else v.reset();
                     return;
                 }
