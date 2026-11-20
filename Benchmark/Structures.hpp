@@ -10,7 +10,7 @@ struct Material {
 };
 
 struct Item {
-    uint64_t id = 0;
+    std::uint64_t id = 0;
     std::string name;
     std::vector<std::string> tags;
     float weight = 1.0f;

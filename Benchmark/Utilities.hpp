@@ -16,8 +16,8 @@
 
 using namespace Pumpkin::AE;
 
-constexpr uint32_t kInventoryType = 1;
-constexpr uint32_t kFirstInventoryID = 1337;
+constexpr std::uint32_t kInventoryType = 1;
+constexpr std::uint32_t kFirstInventoryID = 1337;
 constexpr const char* kInventoryFile = "inventory.assets";
 
 template<typename Func>
@@ -45,7 +45,7 @@ BenchmarkStats CalculateStats(std::vector<double> times)
 
     std::sort(times.begin(), times.end());
 
-    const size_t size = times.size();
+    const std::size_t size = times.size();
 
     if (size % 2 == 0)
         stats.median = (times[size / 2 - 1] + times[size / 2]) / 2.0;

@@ -30,8 +30,8 @@ std::vector<Inventory> CreateInventories(
 
         for (int item = 0; item < nbItemsPerInventory; ++item)
         {
-            const uint64_t id =
-                static_cast<uint64_t>(inv) * nbItemsPerInventory + item;
+            const std::uint64_t id =
+                static_cast<std::uint64_t>(inv) * nbItemsPerInventory + item;
 
             inventory.items.push_back(std::make_unique<Item>(Item{
                 .id = id,
@@ -55,10 +55,10 @@ bool WriteInventories(
     Writer& writer,
     const std::vector<Inventory>& inventories)
 {
-    for (size_t i = 0; i < inventories.size(); ++i)
+    for (std::size_t i = 0; i < inventories.size(); ++i)
     {
-        const uint32_t inventoryID =
-            kFirstInventoryID + static_cast<uint32_t>(i);
+        const std::uint32_t inventoryID =
+            kFirstInventoryID + static_cast<std::uint32_t>(i);
 
         if (!writer.Add(
             inventoryID,
@@ -105,7 +105,7 @@ bool LoadInventories(
 
     for (int i = 0; i < nbInventories; ++i)
     {
-        const uint32_t inventoryID = kFirstInventoryID + i;
+        const std::uint32_t inventoryID = kFirstInventoryID + i;
 
         auto loaded = reader.Load<Inventory>(inventoryID);
 
@@ -240,7 +240,7 @@ bool RunBenchmark(int nbInventories, int nbItemsPerInventory)
     std::println("Items per inventory: {}", nbItemsPerInventory);
     std::println(
         "Total items        : {}",
-        static_cast<uint64_t>(nbInventories) * nbItemsPerInventory
+        static_cast<std::uint64_t>(nbInventories) * nbItemsPerInventory
     );
     std::println("Iterations         : {}", kBenchmarkRuns);
 
