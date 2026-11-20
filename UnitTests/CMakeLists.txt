@@ -22,6 +22,7 @@ set_target_properties(UnitTests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+target_compile_definitions(UnitTests PRIVATE PUMPKIN_AE_VERSION=${AE_VERSION})
 
 target_link_libraries(UnitTests PRIVATE Pumpkin_AE)
 target_link_libraries(UnitTests PRIVATE GTest::gtest_main)
