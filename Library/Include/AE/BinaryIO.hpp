@@ -55,7 +55,7 @@ namespace Pumpkin::AE {
 
     /// @brief Type exposing a Reflect() member returning a tuple of references to its fields.
     template<typename T>
-    concept Reflectable = requires(const T & t) { t.Reflect(); };
+    concept Reflectable = requires(const T& t) { t.Reflect(); };
 
     /// @brief Arithmetic types and enums, encoded as fixed-width integers / IEEE-754 floats.
     template<typename T>

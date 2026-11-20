@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 23)
 add_subdirectory(Library)
 add_subdirectory(Example)
 add_subdirectory(Benchmark)
+add_subdirectory(UnitTests)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_libraries(Pumpkin_AE PRIVATE stdc++exp)
